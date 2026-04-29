@@ -1,0 +1,40 @@
+version: "3"
+
+tasks:
+  up:
+    desc: Tüm servisleri başlat
+    cmd: docker compose up -d --build
+
+  down:
+    desc: Tüm servisleri durdur
+    cmd: docker compose down
+
+  restart:
+    desc: Tüm servisleri yeniden başlat
+    cmds:
+      - task: down
+      - task: up
+
+  logs:
+    desc: Tüm servis loglarını izle
+    cmd: docker compose logs -f
+
+  logs:publisher:
+    desc: Publisher loglarını izle
+    cmd: docker compose logs -f publisher
+
+  logs:subscriber:
+    desc: Subscriber loglarını izle
+    cmd: docker compose logs -f subscriber
+
+  ps:
+    desc: Çalışan container'ları listele
+    cmd: docker compose ps
+
+  clean:
+    desc: Container'ları ve volume'ları sil
+    cmd: docker compose down -v --remove-orphans
+
+  build:
+    desc: Image'ları yeniden derle
+    cmd: docker compose build --no-cache

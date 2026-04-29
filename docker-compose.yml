@@ -1,0 +1,26 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  publisher:
+    build: ./publisher
+    depends_on:
+      - mosquitto
+    restart: on-failure
+
+  subscriber:
+    build: ./subscriber
+    depends_on:
+      - mosquitto
+    ports:
+      - "8050:8050"
+    volumes:
+      - telemetry_data:/data
+    restart: on-failure
+
+volumes:
+  telemetry_data:
