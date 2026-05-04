@@ -19,7 +19,7 @@ print(f"Publisher started → topic: {TOPIC}, interval: {INTERVAL}s")
 t = 0
 while True:
     sicaklik = round(22 + 5 * math.sin(t * 0.1) + random.uniform(-0.5, 0.5), 2)
-    nem = round(55 + 10 * math.cos(t * 0.08) + random.uniform(-1, 1), 2)
+    nem = round(75 - 0.8 * sicaklik + random.uniform(-1, 1), 2)
     isik = round(400 + 150 * math.sin(t * 0.05 + 1) + random.uniform(-10, 10), 2)
 
     payload = {
