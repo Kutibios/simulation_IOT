@@ -43,17 +43,17 @@ for i in range(total_minutes):
     temp_base   = 22 + 8 * math.sin(daily_phase - math.pi / 2 + 0.5)
     # Günden güne hafif farklılık
     day_offset  = math.sin(i / 1440 * 2 * math.pi) * 1.5
-    sicaklik    = round(temp_base + day_offset + random.uniform(-0.4, 0.4), 2)
+    sicaklik    = round(temp_base + day_offset + random.gauss(0, 0.4), 2)
 
     # — Nem: sıcaklıkla ters orantılı
-    nem = round(85 - 1.4 * sicaklik + random.uniform(-1.5, 1.5), 2)
+    nem = round(85 - 1.4 * sicaklik + random.gauss(0, 1), 2)
     nem = max(30, min(95, nem))  # gerçekçi aralık
 
     # — Işık: gündüz güneş eğrisi (06:00 - 20:00), gece 0
     if 6 <= hour <= 20:
         sun_phase = (hour - 6) / 14 * math.pi  # 0 → π
         cloud     = random.uniform(0.7, 1.0)    # bulut etkisi
-        isik      = round(900 * math.sin(sun_phase) * cloud + random.uniform(-15, 15), 2)
+        isik      = round(900 * math.sin(sun_phase) * cloud + random.gauss(0, 10), 2)
         isik      = max(0, isik)
     else:
         isik = round(random.uniform(0, 5), 2)   # gece: neredeyse sıfır
