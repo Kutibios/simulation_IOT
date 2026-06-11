@@ -105,7 +105,7 @@ def render(_, theme):
         conn = sqlite3.connect(DB_PATH)
         df = pd.read_sql("SELECT * FROM telemetry ORDER BY id", conn)
         conn.close()
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True).dt.tz_convert(TZ_TR).dt.tz_localize(None)
     except Exception:
         df = None
 
