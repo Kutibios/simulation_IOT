@@ -1,0 +1,339 @@
+[
+    {
+        "id": "8caa13b6a1f35213",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "broker1",
+        "type": "mqtt-broker",
+        "name": "Local Mosquitto",
+        "broker": "localhost",
+        "port": "1883",
+        "clientid": "nodered_dashboard",
+        "usetls": false,
+        "keepalive": "60",
+        "cleansession": true
+    },
+    {
+        "id": "tab1",
+        "type": "ui_tab",
+        "name": "Akıllı Sistemler",
+        "icon": "dashboard",
+        "order": 1
+    },
+    {
+        "id": "group1",
+        "type": "ui_group",
+        "name": "Sensör Verileri",
+        "tab": "tab1",
+        "order": 1,
+        "disp": true,
+        "width": 12
+    },
+    {
+        "id": "27491adb22581134",
+        "type": "ui_base",
+        "theme": {
+            "name": "theme-light",
+            "lightTheme": {
+                "default": "#0094CE",
+                "baseColor": "#0094CE",
+                "baseFont": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif",
+                "edited": false
+            },
+            "darkTheme": {
+                "default": "#097479",
+                "baseColor": "#097479",
+                "baseFont": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif",
+                "edited": false
+            },
+            "customTheme": {
+                "name": "Untitled Theme 1",
+                "default": "#4B7930",
+                "baseColor": "#4B7930",
+                "baseFont": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif"
+            },
+            "themeState": {
+                "base-color": {
+                    "default": "#0094CE",
+                    "value": "#0094CE",
+                    "edited": false
+                },
+                "page-titlebar-backgroundColor": {
+                    "value": "#0094CE",
+                    "edited": false
+                },
+                "page-backgroundColor": {
+                    "value": "#fafafa",
+                    "edited": false
+                },
+                "page-sidebar-backgroundColor": {
+                    "value": "#ffffff",
+                    "edited": false
+                },
+                "group-textColor": {
+                    "value": "#1bbfff",
+                    "edited": false
+                },
+                "group-borderColor": {
+                    "value": "#ffffff",
+                    "edited": false
+                },
+                "group-backgroundColor": {
+                    "value": "#ffffff",
+                    "edited": false
+                },
+                "widget-textColor": {
+                    "value": "#111111",
+                    "edited": false
+                },
+                "widget-backgroundColor": {
+                    "value": "#0094ce",
+                    "edited": false
+                },
+                "widget-borderColor": {
+                    "value": "#ffffff",
+                    "edited": false
+                },
+                "base-font": {
+                    "value": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif"
+                }
+            },
+            "angularTheme": {
+                "primary": "indigo",
+                "accents": "blue",
+                "warn": "red",
+                "background": "grey",
+                "palette": "light"
+            }
+        },
+        "site": {
+            "name": "Node-RED Dashboard",
+            "hideToolbar": "false",
+            "allowSwipe": "false",
+            "lockMenu": "false",
+            "allowTempTheme": "true",
+            "dateFormat": "DD/MM/YYYY",
+            "sizes": {
+                "sx": 48,
+                "sy": 48,
+                "gx": 6,
+                "gy": 6,
+                "cx": 6,
+                "cy": 6,
+                "px": 0,
+                "py": 0
+            }
+        }
+    },
+    {
+        "id": "mqtt1",
+        "type": "mqtt in",
+        "z": "8caa13b6a1f35213",
+        "name": "Tüm Telemetry",
+        "topic": "+/+/telemetry",
+        "qos": "1",
+        "broker": "broker1",
+        "inputs": 0,
+        "x": 320,
+        "y": 360,
+        "wires": [
+            [
+                "json1"
+            ]
+        ]
+    },
+    {
+        "id": "json1",
+        "type": "json",
+        "z": "8caa13b6a1f35213",
+        "name": "JSON Parse",
+        "x": 510,
+        "y": 360,
+        "wires": [
+            [
+                "func1",
+                "debug1"
+            ]
+        ]
+    },
+    {
+        "id": "debug1",
+        "type": "debug",
+        "z": "8caa13b6a1f35213",
+        "name": "Debug",
+        "active": true,
+        "x": 510,
+        "y": 460,
+        "wires": []
+    },
+    {
+        "id": "func1",
+        "type": "function",
+        "z": "8caa13b6a1f35213",
+        "name": "Veriyi Ayır",
+        "func": "// cihaz_id yoksa topic'ten al\nvar cihaz_id = msg.payload.cihaz_id || msg.payload.sensor || msg.topic;\n\nvar sicaklik = msg.payload.sicaklik;\nvar nem = msg.payload.nem;\n\nif (sicaklik === undefined || nem === undefined) return null;\n\nvar sicaklik_msg = {\n    topic: cihaz_id,\n    payload: sicaklik\n};\nvar nem_msg = {\n    topic: cihaz_id,\n    payload: nem\n};\n\nreturn [[sicaklik_msg], [nem_msg]];",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 700,
+        "y": 360,
+        "wires": [
+            [
+                "gauge_sicaklik",
+                "chart_sicaklik"
+            ],
+            [
+                "gauge_nem",
+                "chart_nem"
+            ]
+        ]
+    },
+    {
+        "id": "gauge_sicaklik",
+        "type": "ui_gauge",
+        "z": "8caa13b6a1f35213",
+        "name": "Sıcaklık",
+        "group": "group1",
+        "order": 1,
+        "width": 4,
+        "height": 4,
+        "gtype": "gage",
+        "title": "Sıcaklık (°C)",
+        "label": "°C",
+        "format": "{{value}}",
+        "min": 0,
+        "max": 50,
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": 25,
+        "seg2": 35,
+        "x": 920,
+        "y": 300,
+        "wires": []
+    },
+    {
+        "id": "chart_sicaklik",
+        "type": "ui_chart",
+        "z": "8caa13b6a1f35213",
+        "name": "Sıcaklık Grafiği",
+        "group": "group1",
+        "order": 2,
+        "width": 12,
+        "height": 6,
+        "label": "Sıcaklık Geçmişi",
+        "chartType": "line",
+        "legend": "true",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "",
+        "dot": false,
+        "ymin": "",
+        "ymax": "",
+        "removeOlder": "100",
+        "removeOlderPoints": "",
+        "removeOlderUnit": "60",
+        "cutout": "",
+        "useOneColor": false,
+        "useUTC": false,
+        "colors": [
+            "#1f77b4",
+            "#aec7e8",
+            "#ff7f0e",
+            "#2ca02c",
+            "#98df8a",
+            "#d62728",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5"
+        ],
+        "outputs": 1,
+        "useDifferentColor": false,
+        "className": "",
+        "x": 920,
+        "y": 360,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "gauge_nem",
+        "type": "ui_gauge",
+        "z": "8caa13b6a1f35213",
+        "name": "Nem",
+        "group": "group1",
+        "order": 3,
+        "width": 4,
+        "height": 4,
+        "gtype": "gage",
+        "title": "Nem (%)",
+        "label": "%",
+        "format": "{{value}}",
+        "min": 0,
+        "max": 100,
+        "colors": [
+            "#ca3838",
+            "#e6e600",
+            "#00b500"
+        ],
+        "seg1": 30,
+        "seg2": 60,
+        "x": 920,
+        "y": 420,
+        "wires": []
+    },
+    {
+        "id": "chart_nem",
+        "type": "ui_chart",
+        "z": "8caa13b6a1f35213",
+        "name": "Nem Grafiği",
+        "group": "group1",
+        "order": 4,
+        "width": 12,
+        "height": 6,
+        "label": "Nem Geçmişi",
+        "chartType": "line",
+        "legend": "true",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "",
+        "dot": false,
+        "ymin": "",
+        "ymax": "",
+        "removeOlder": "100",
+        "removeOlderPoints": "",
+        "removeOlderUnit": "60",
+        "cutout": "",
+        "useOneColor": false,
+        "useUTC": false,
+        "colors": [
+            "#1f77b4",
+            "#aec7e8",
+            "#ff7f0e",
+            "#2ca02c",
+            "#98df8a",
+            "#d62728",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5"
+        ],
+        "outputs": 1,
+        "useDifferentColor": false,
+        "className": "",
+        "x": 920,
+        "y": 480,
+        "wires": [
+            []
+        ]
+    }
+]

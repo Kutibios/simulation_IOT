@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# InfluxDB kur veya onar — mimariye göre.
+set -euo pipefail
+PW="${SUDO_PW:-kutay123}"
+log() { echo "[$(date +%H:%M:%S)] $*"; }
+
+log "=== STEP 3: INFLUXDB KUR / ONAR ==="
+
+if dpkg -s influxdb2 >/dev/null 2>&1; then
+  log "  Paket zaten kurulu, servis yeniden deneniyor..."
+else
+  log "  Repo + apt install (2-5 dk)..."
+  rm -f /tmp/influx.key /tmp/influx.gpg
+  curl -fsSL https://repos.influxdata.com/influxdata-archive.key -o /tmp/influx.key
+  gpg --batch --yes --dearmor -o /tmp/influx.gpg /tmp/influx.key
+  echo "${PW}" | sudo -S cp /tmp/influx.gpg /usr/share/keyrings/influxdb-archive-keyring.gpg
+  echo "deb [signed-by=/usr/share/keyrings/influxdb-archive-keyring.gpg] https://repos.influxdata.com/debian stable main" \
+    | sudo -S tee /etc/apt/sources.list.d/influxdb.list >/dev/null
+  echo "${PW}" | sudo -S apt-get update -qq
+  echo "${PW}" | sudo -S DEBIAN_FRONTEND=noninteractive apt-get install -y influxdb2 influxdb2-cli
+fi
+
+echo "${PW}" | sudo -S systemctl enable influxdb
+if ! echo "${PW}" | sudo -S systemctl restart influxdb; then
+  log "  UYARI: restart başarısız — journal:"
+  echo "${PW}" | sudo -S journalctl -u influxdb -n 6 --no-pager | sed 's/^/    /'
+  exit 1
+fi
+
+for i in $(seq 1 20); do
+  influx ping >/dev/null 2>&1 && { log "  Influx ping OK"; break; }
+  log "  bekleniyor... ($i/20)"
+  sleep 2
+done
+influx ping >/dev/null 2>&1 || { log "  HATA: ping yok"; exit 1; }
+
+CONFIG="${HOME}/.config/iot-hub"
+mkdir -p "${CONFIG}"
+if [[ ! -f "${CONFIG}/influx-admin.token" ]]; then
+  if ! influx org list 2>/dev/null | grep -q iot-hub; then
+    TOKEN="$(date +%s)-iot-hub-$(id -u)"
+    log "  influx setup..."
+    influx setup --username admin --password iot-hub-admin \
+      --org iot-hub --bucket iot_telemetry --retention 0 \
+      --token "${TOKEN}" --force
+    echo "${TOKEN}" > "${CONFIG}/influx-admin.token"
+  fi
+fi
+log "=== STEP 3 BİTTİ ==="

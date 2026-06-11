@@ -1,0 +1,209 @@
+[
+    {
+        "id": "8caa13b6a1f35213",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "mqtt1",
+        "type": "mqtt in",
+        "z": "8caa13b6a1f35213",
+        "name": "Tüm Telemetry",
+        "topic": "+/+/telemetry",
+        "qos": "1",
+        "broker": "broker1",
+        "inputs": 0,
+        "x": 320,
+        "y": 360,
+        "wires": [
+            [
+                "json1"
+            ]
+        ]
+    },
+    {
+        "id": "json1",
+        "type": "json",
+        "z": "8caa13b6a1f35213",
+        "name": "JSON Parse",
+        "x": 510,
+        "y": 360,
+        "wires": [
+            [
+                "func1",
+                "debug1"
+            ]
+        ]
+    },
+    {
+        "id": "debug1",
+        "type": "debug",
+        "z": "8caa13b6a1f35213",
+        "name": "Debug",
+        "active": true,
+        "x": 510,
+        "y": 460,
+        "wires": []
+    },
+    {
+        "id": "func1",
+        "type": "function",
+        "z": "8caa13b6a1f35213",
+        "name": "Veriyi Ayır (DS18B20 + DHT11)",
+        "func": "\nconst p = msg.payload;\nif (!p || typeof p !== \"object\") {\n    return null;\n}\n\nconst sensor = String(p.sensor || p.cihaz_id || p.device_id || \"unknown\").toLowerCase();\n\nlet sicaklik = p.sicaklik;\nlet nem = p.nem;\n\nif (p.values && typeof p.values === \"object\") {\n    if (sicaklik === undefined) sicaklik = p.values.sicaklik;\n    if (nem === undefined) nem = p.values.nem;\n}\n\nfunction chartTopicSicaklik() {\n    if (sensor.includes(\"ds18\")) return \"ds18b20\";\n    if (sensor.includes(\"dht\")) return \"dht11\";\n    if (nem !== undefined && nem !== null) return \"dht11\";\n    return \"ds18b20\";\n}\n\nconst outGaugeSicaklik = [];\nconst outChartSicaklik = [];\nconst outGaugeNem = [];\nconst outChartNem = [];\n\nif (sicaklik !== undefined && sicaklik !== null && !Number.isNaN(Number(sicaklik))) {\n    const t = Number(sicaklik);\n    outGaugeSicaklik.push({ payload: t });\n    outChartSicaklik.push({ payload: t, topic: chartTopicSicaklik() });\n}\n\nif (nem !== undefined && nem !== null && !Number.isNaN(Number(nem))) {\n    const n = Number(nem);\n    outGaugeNem.push({ payload: n });\n    outChartNem.push({ payload: n, topic: \"dht11\" });\n}\n\nif (\n    outGaugeSicaklik.length === 0 &&\n    outChartSicaklik.length === 0 &&\n    outGaugeNem.length === 0 &&\n    outChartNem.length === 0\n) {\n    return null;\n}\n\nreturn [outGaugeSicaklik, outChartSicaklik, outGaugeNem, outChartNem];",
+        "outputs": 4,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 700,
+        "y": 360,
+        "wires": [
+            [
+                "gauge_sicaklik"
+            ],
+            [
+                "chart_sicaklik"
+            ],
+            [
+                "gauge_nem"
+            ],
+            [
+                "chart_nem"
+            ]
+        ]
+    },
+    {
+        "id": "gauge_sicaklik",
+        "type": "ui_gauge",
+        "z": "8caa13b6a1f35213",
+        "name": "Sıcaklık",
+        "group": "group1",
+        "order": 1,
+        "width": 4,
+        "height": 4,
+        "gtype": "gage",
+        "title": "Sıcaklık (°C)",
+        "label": "°C",
+        "format": "{{value}}",
+        "min": 0,
+        "max": 50,
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": 25,
+        "seg2": 35,
+        "x": 920,
+        "y": 300,
+        "wires": []
+    },
+    {
+        "id": "chart_sicaklik",
+        "type": "ui_chart",
+        "z": "8caa13b6a1f35213",
+        "name": "Sıcaklık Grafiği",
+        "group": "group1",
+        "order": 2,
+        "width": 12,
+        "height": 6,
+        "label": "Sıcaklık Geçmişi",
+        "chartType": "line",
+        "legend": "true",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "outputs": 1,
+        "x": 920,
+        "y": 360,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "gauge_nem",
+        "type": "ui_gauge",
+        "z": "8caa13b6a1f35213",
+        "name": "Nem",
+        "group": "group1",
+        "order": 3,
+        "width": 4,
+        "height": 4,
+        "gtype": "gage",
+        "title": "Nem (%)",
+        "label": "%",
+        "format": "{{value}}",
+        "min": 0,
+        "max": 100,
+        "colors": [
+            "#ca3838",
+            "#e6e600",
+            "#00b500"
+        ],
+        "seg1": 30,
+        "seg2": 60,
+        "x": 920,
+        "y": 420,
+        "wires": []
+    },
+    {
+        "id": "chart_nem",
+        "type": "ui_chart",
+        "z": "8caa13b6a1f35213",
+        "name": "Nem Grafiği",
+        "group": "group1",
+        "order": 4,
+        "width": 12,
+        "height": 6,
+        "label": "Nem Geçmişi",
+        "chartType": "line",
+        "legend": "true",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "outputs": 1,
+        "x": 920,
+        "y": 480,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "broker1",
+        "type": "mqtt-broker",
+        "name": "Local Mosquitto",
+        "broker": "localhost",
+        "port": "1883",
+        "clientid": "nodered_dashboard",
+        "usetls": false,
+        "keepalive": "60",
+        "cleansession": true
+    },
+    {
+        "id": "group1",
+        "type": "ui_group",
+        "name": "Sensör Verileri",
+        "tab": "tab1",
+        "order": 1,
+        "disp": true,
+        "width": 12
+    },
+    {
+        "id": "tab1",
+        "type": "ui_tab",
+        "name": "Akıllı Sistemler",
+        "icon": "dashboard",
+        "order": 1
+    },
+    {
+        "id": "4deb7ed6ede793e2",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-dashboard": "3.6.6"
+        }
+    }
+]

@@ -1,0 +1,17 @@
+[Unit]
+Description=IoT Hub MQTT telemetry ingest (PostgreSQL)
+After=network.target mosquitto.service postgresql.service
+Wants=mosquitto.service postgresql.service
+
+[Service]
+Type=simple
+User=kutay
+Group=kutay
+WorkingDirectory=/home/kutay
+Environment=IOT_HUB_ENV_FILE=/home/kutay/.config/iot-hub/.env
+ExecStart=/home/kutay/hub-api/.venv/bin/python /home/kutay/mqtt_ingest.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

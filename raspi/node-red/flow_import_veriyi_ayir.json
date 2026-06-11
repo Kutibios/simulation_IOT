@@ -1,0 +1,20 @@
+[
+    {
+        "id": "import_func_ds18_dht11",
+        "type": "function",
+        "z": "",
+        "name": "Veriyi Ayır (DS18B20 + DHT11)",
+        "func": "const p = msg.payload;\nif (!p || typeof p !== \"object\") {\n    return null;\n}\n\nconst sensor = String(p.sensor || p.cihaz_id || p.device_id || \"unknown\").toLowerCase();\n\nlet sicaklik = p.sicaklik;\nlet nem = p.nem;\n\nif (p.values && typeof p.values === \"object\") {\n    if (sicaklik === undefined) sicaklik = p.values.sicaklik;\n    if (nem === undefined) nem = p.values.nem;\n}\n\nconst out = [];\n\nif (sicaklik !== undefined && sicaklik !== null && !Number.isNaN(Number(sicaklik))) {\n    out.push({ payload: Number(sicaklik), topic: \"sicaklik_gauge\" });\n}\n\nif (nem !== undefined && nem !== null && !Number.isNaN(Number(nem))) {\n    out.push({ payload: Number(nem), topic: \"nem_gauge\" });\n}\n\nif (sensor.includes(\"ds18\") || sensor === \"ds18b20\") {\n    if (sicaklik !== undefined) {\n        out.push({ payload: Number(sicaklik), topic: \"ds18b20\" });\n    }\n} else if (sensor.includes(\"dht\") || sensor === \"dht11\") {\n    if (sicaklik !== undefined) {\n        out.push({ payload: Number(sicaklik), topic: \"dht11\" });\n    }\n    if (nem !== undefined) {\n        out.push({ payload: Number(nem), topic: \"dht11\" });\n    }\n} else {\n    if (nem !== undefined) {\n        if (sicaklik !== undefined) {\n            out.push({ payload: Number(sicaklik), topic: \"dht11\" });\n        }\n        out.push({ payload: Number(nem), topic: \"dht11\" });\n    } else if (sicaklik !== undefined) {\n        out.push({ payload: Number(sicaklik), topic: \"ds18b20\" });\n    }\n}\n\nif (out.length === 0) {\n    return null;\n}\n\nnode.send(out);\nreturn null;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 280,
+        "wires": [
+            []
+        ]
+    }
+]

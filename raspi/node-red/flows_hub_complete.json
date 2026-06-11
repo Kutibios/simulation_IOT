@@ -1,0 +1,930 @@
+[
+    {
+        "id": "hub_tab_telemetry",
+        "type": "tab",
+        "label": "Telemetry",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "hub_tab_yz",
+        "type": "tab",
+        "label": "YZ Analiz",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "hub_tab_command",
+        "type": "tab",
+        "label": "Command Log",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "broker1",
+        "type": "mqtt-broker",
+        "name": "Local Mosquitto",
+        "broker": "localhost",
+        "port": "1883",
+        "clientid": "nodered_hub",
+        "usetls": false,
+        "keepalive": "60",
+        "cleansession": true
+    },
+    {
+        "id": "influx_cfg1",
+        "type": "influxdb",
+        "hostname": "127.0.0.1",
+        "port": "8086",
+        "protocol": "http",
+        "database": "",
+        "name": "InfluxDB 2.x (iot_telemetry)",
+        "usetls": false,
+        "tls": "",
+        "influxdbVersion": "2.0",
+        "url": "http://127.0.0.1:8086",
+        "timeout": 10,
+        "rejectUnauthorized": true,
+        "org": "iot-hub",
+        "bucket": "iot_telemetry"
+    },
+    {
+        "id": "ui_base_hub",
+        "type": "ui_base",
+        "theme": {
+            "name": "theme-light"
+        },
+        "site": {
+            "name": "IoT Hub Dashboard"
+        }
+    },
+    {
+        "id": "tab1",
+        "type": "ui_tab",
+        "name": "Akıllı Sistemler",
+        "icon": "dashboard",
+        "order": 1,
+        "disabled": false
+    },
+    {
+        "id": "group_sulama",
+        "type": "ui_group",
+        "name": "Sulama",
+        "tab": "tab1",
+        "order": 1,
+        "disp": true,
+        "width": "12",
+        "collapse": false
+    },
+    {
+        "id": "group_hava",
+        "type": "ui_group",
+        "name": "Havalandırma",
+        "tab": "tab1",
+        "order": 2,
+        "disp": true,
+        "width": "12",
+        "collapse": false
+    },
+    {
+        "id": "hub_global_cfg",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-dashboard": "3.6.6",
+            "node-red-contrib-influxdb": "0.7.2"
+        }
+    },
+    {
+        "id": "mqtt_telemetry_in",
+        "type": "mqtt in",
+        "z": "hub_tab_telemetry",
+        "name": "Tüm Telemetry",
+        "topic": "+/+/telemetry",
+        "qos": "1",
+        "broker": "broker1",
+        "inputs": 0,
+        "x": 140,
+        "y": 200,
+        "wires": [
+            [
+                "json_telemetry"
+            ]
+        ]
+    },
+    {
+        "id": "json_telemetry",
+        "type": "json",
+        "z": "hub_tab_telemetry",
+        "name": "JSON Parse",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 330,
+        "y": 200,
+        "wires": [
+            [
+                "func_veriyi_ayir",
+                "func_influx_prep",
+                "func_threshold",
+                "debug_telemetry"
+            ]
+        ]
+    },
+    {
+        "id": "debug_telemetry",
+        "type": "debug",
+        "z": "hub_tab_telemetry",
+        "name": "Telemetry Debug",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 330,
+        "y": 300,
+        "wires": []
+    },
+    {
+        "id": "func_veriyi_ayir",
+        "type": "function",
+        "z": "hub_tab_telemetry",
+        "name": "Veriyi Ayır (Hub)",
+        "func": "// 6 çıkış:\n// 1 → DS18B20 sıcaklık gauge\n// 2 → DHT11 sıcaklık gauge\n// 3 → Nem gauge\n// 4 → Sıcaklık chart (topic: ds18b20, dht11)\n// 5 → Nem chart (topic: dht11_nem)\n// 6 → Hava kalitesi gauge (tarim_havalandirma / MQ sensörleri)\n\nconst p = msg.payload;\nif (!p || typeof p !== \"object\") {\n    return null;\n}\n\nconst topicParts = String(msg.topic || \"\").split(\"/\");\nconst problem_id = topicParts[0] || p.problem_id || \"unknown\";\nconst takim_no = topicParts[1] || p.takim_no || \"unknown\";\n\nconst sensor = String(p.sensor || p.cihaz_id || p.device_id || \"unknown\").toLowerCase();\n\nlet sicaklik = p.sicaklik;\nlet nem = p.nem;\nlet hava_kalitesi = p.hava_kalitesi;\n\nif (p.values && typeof p.values === \"object\") {\n    if (sicaklik === undefined) sicaklik = p.values.sicaklik;\n    if (nem === undefined) nem = p.values.nem;\n    if (hava_kalitesi === undefined) hava_kalitesi = p.values.hava_kalitesi;\n}\n\nconst isDs18 = sensor.includes(\"ds18\");\nconst isDht = sensor.includes(\"dht\");\n\nconst outDs18Gauge = [];\nconst outDhtTempGauge = [];\nconst outNemGauge = [];\nconst outTempChart = [];\nconst outNemChart = [];\nconst outHavaGauge = [];\n\nif (sicaklik !== undefined && sicaklik !== null && !Number.isNaN(Number(sicaklik))) {\n    const t = Number(sicaklik);\n\n    if (isDs18) {\n        outDs18Gauge.push({ payload: t, problem_id, takim_no });\n        outTempChart.push({ payload: t, topic: \"ds18b20\", problem_id, takim_no });\n    } else if (isDht || (nem !== undefined && nem !== null)) {\n        outDhtTempGauge.push({ payload: t, problem_id, takim_no });\n        outTempChart.push({ payload: t, topic: \"dht11\", problem_id, takim_no });\n    } else {\n        outDs18Gauge.push({ payload: t, problem_id, takim_no });\n        outTempChart.push({ payload: t, topic: \"ds18b20\", problem_id, takim_no });\n    }\n}\n\nif (nem !== undefined && nem !== null && !Number.isNaN(Number(nem))) {\n    const n = Number(nem);\n    outNemGauge.push({ payload: n, problem_id, takim_no });\n    outNemChart.push({ payload: n, topic: \"dht11_nem\", problem_id, takim_no });\n}\n\nif (hava_kalitesi !== undefined && hava_kalitesi !== null && !Number.isNaN(Number(hava_kalitesi))) {\n    const h = Number(hava_kalitesi);\n    outHavaGauge.push({ payload: h, problem_id, takim_no });\n}\n\nif (\n    outDs18Gauge.length === 0 &&\n    outDhtTempGauge.length === 0 &&\n    outNemGauge.length === 0 &&\n    outTempChart.length === 0 &&\n    outNemChart.length === 0 &&\n    outHavaGauge.length === 0\n) {\n    return null;\n}\n\nreturn [outDs18Gauge, outDhtTempGauge, outNemGauge, outTempChart, outNemChart, outHavaGauge];\n",
+        "outputs": 6,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 160,
+        "wires": [
+            [
+                "sw_ds18"
+            ],
+            [
+                "sw_dht"
+            ],
+            [
+                "sw_nem"
+            ],
+            [
+                "sw_temp_chart"
+            ],
+            [
+                "sw_nem_chart"
+            ],
+            [
+                "sw_hava"
+            ]
+        ]
+    },
+    {
+        "id": "sw_ds18",
+        "type": "switch",
+        "z": "hub_tab_telemetry",
+        "name": "DS18 → problem",
+        "property": "problem_id",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "tarim_sulama",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "tarim_havalandirma",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 2,
+        "x": 760,
+        "y": 60,
+        "wires": [
+            [
+                "gauge_ds18_sul"
+            ],
+            [
+                "gauge_ds18_hava"
+            ]
+        ]
+    },
+    {
+        "id": "sw_dht",
+        "type": "switch",
+        "z": "hub_tab_telemetry",
+        "name": "DHT → problem",
+        "property": "problem_id",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "tarim_sulama",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "tarim_havalandirma",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 2,
+        "x": 760,
+        "y": 120,
+        "wires": [
+            [
+                "gauge_dht_sul"
+            ],
+            [
+                "gauge_dht_hava"
+            ]
+        ]
+    },
+    {
+        "id": "sw_nem",
+        "type": "switch",
+        "z": "hub_tab_telemetry",
+        "name": "Nem → problem",
+        "property": "problem_id",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "tarim_sulama",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "tarim_havalandirma",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 2,
+        "x": 760,
+        "y": 180,
+        "wires": [
+            [
+                "gauge_nem_sul"
+            ],
+            [
+                "gauge_nem_hava"
+            ]
+        ]
+    },
+    {
+        "id": "sw_temp_chart",
+        "type": "switch",
+        "z": "hub_tab_telemetry",
+        "name": "Sıcaklık chart → problem",
+        "property": "problem_id",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "tarim_sulama",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "tarim_havalandirma",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 2,
+        "x": 760,
+        "y": 240,
+        "wires": [
+            [
+                "chart_temp_sul"
+            ],
+            [
+                "chart_temp_hava"
+            ]
+        ]
+    },
+    {
+        "id": "sw_nem_chart",
+        "type": "switch",
+        "z": "hub_tab_telemetry",
+        "name": "Nem chart → problem",
+        "property": "problem_id",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "tarim_sulama",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "tarim_havalandirma",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 2,
+        "x": 760,
+        "y": 300,
+        "wires": [
+            [
+                "chart_nem_sul"
+            ],
+            [
+                "chart_nem_hava"
+            ]
+        ]
+    },
+    {
+        "id": "sw_hava",
+        "type": "switch",
+        "z": "hub_tab_telemetry",
+        "name": "Hava → problem",
+        "property": "problem_id",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "tarim_sulama",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "tarim_havalandirma",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 2,
+        "x": 760,
+        "y": 360,
+        "wires": [
+            [],
+            [
+                "gauge_hava_hava"
+            ]
+        ]
+    },
+    {
+        "id": "gauge_ds18_sul",
+        "type": "ui_gauge",
+        "z": "hub_tab_telemetry",
+        "name": "DS18 Sulama",
+        "group": "group_sulama",
+        "order": 1,
+        "width": 4,
+        "height": 4,
+        "gtype": "gage",
+        "title": "DS18B20 (°C)",
+        "label": "°C",
+        "format": "{{value}}",
+        "min": 0,
+        "max": 50,
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": 25,
+        "seg2": 35,
+        "x": 980,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "gauge_dht_sul",
+        "type": "ui_gauge",
+        "z": "hub_tab_telemetry",
+        "name": "DHT Sulama",
+        "group": "group_sulama",
+        "order": 2,
+        "width": 4,
+        "height": 4,
+        "gtype": "gage",
+        "title": "DHT11 Sıcaklık (°C)",
+        "label": "°C",
+        "format": "{{value}}",
+        "min": 0,
+        "max": 50,
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": 25,
+        "seg2": 35,
+        "x": 980,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "gauge_nem_sul",
+        "type": "ui_gauge",
+        "z": "hub_tab_telemetry",
+        "name": "Nem Sulama",
+        "group": "group_sulama",
+        "order": 3,
+        "width": 4,
+        "height": 4,
+        "gtype": "gage",
+        "title": "Nem (%)",
+        "label": "%",
+        "format": "{{value}}",
+        "min": 0,
+        "max": 100,
+        "colors": [
+            "#ca3838",
+            "#e6e600",
+            "#00b500"
+        ],
+        "seg1": 30,
+        "seg2": 60,
+        "x": 980,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "chart_temp_sul",
+        "type": "ui_chart",
+        "z": "hub_tab_telemetry",
+        "name": "Sıcaklık Sulama",
+        "group": "group_sulama",
+        "order": 4,
+        "width": 12,
+        "height": 6,
+        "label": "Sıcaklık (ds18b20, dht11)",
+        "chartType": "line",
+        "legend": "true",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "Veri bekleniyor",
+        "removeOlder": 1,
+        "removeOlderUnit": "3600",
+        "outputs": 1,
+        "x": 980,
+        "y": 220,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "chart_nem_sul",
+        "type": "ui_chart",
+        "z": "hub_tab_telemetry",
+        "name": "Nem Sulama",
+        "group": "group_sulama",
+        "order": 5,
+        "width": 12,
+        "height": 6,
+        "label": "Nem (dht11_nem)",
+        "chartType": "line",
+        "legend": "true",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "Veri bekleniyor",
+        "removeOlder": 1,
+        "removeOlderUnit": "3600",
+        "outputs": 1,
+        "x": 980,
+        "y": 300,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "gauge_ds18_hava",
+        "type": "ui_gauge",
+        "z": "hub_tab_telemetry",
+        "name": "DS18 Hava",
+        "group": "group_hava",
+        "order": 1,
+        "width": 4,
+        "height": 4,
+        "gtype": "gage",
+        "title": "DS18B20 (°C)",
+        "label": "°C",
+        "format": "{{value}}",
+        "min": 0,
+        "max": 50,
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": 25,
+        "seg2": 35,
+        "x": 980,
+        "y": 400,
+        "wires": []
+    },
+    {
+        "id": "gauge_dht_hava",
+        "type": "ui_gauge",
+        "z": "hub_tab_telemetry",
+        "name": "DHT Hava",
+        "group": "group_hava",
+        "order": 2,
+        "width": 4,
+        "height": 4,
+        "gtype": "gage",
+        "title": "DHT11 Sıcaklık (°C)",
+        "label": "°C",
+        "format": "{{value}}",
+        "min": 0,
+        "max": 50,
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": 25,
+        "seg2": 35,
+        "x": 980,
+        "y": 460,
+        "wires": []
+    },
+    {
+        "id": "gauge_nem_hava",
+        "type": "ui_gauge",
+        "z": "hub_tab_telemetry",
+        "name": "Nem Hava",
+        "group": "group_hava",
+        "order": 3,
+        "width": 4,
+        "height": 4,
+        "gtype": "gage",
+        "title": "Nem (%)",
+        "label": "%",
+        "format": "{{value}}",
+        "min": 0,
+        "max": 100,
+        "colors": [
+            "#ca3838",
+            "#e6e600",
+            "#00b500"
+        ],
+        "seg1": 30,
+        "seg2": 60,
+        "x": 980,
+        "y": 520,
+        "wires": []
+    },
+    {
+        "id": "gauge_hava_hava",
+        "type": "ui_gauge",
+        "z": "hub_tab_telemetry",
+        "name": "Hava Kalitesi",
+        "group": "group_hava",
+        "order": 4,
+        "width": 4,
+        "height": 4,
+        "gtype": "gage",
+        "title": "Hava Kalitesi",
+        "label": "AQI",
+        "format": "{{value}}",
+        "min": 0,
+        "max": 600,
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": 200,
+        "seg2": 400,
+        "x": 980,
+        "y": 580,
+        "wires": []
+    },
+    {
+        "id": "chart_temp_hava",
+        "type": "ui_chart",
+        "z": "hub_tab_telemetry",
+        "name": "Sıcaklık Hava",
+        "group": "group_hava",
+        "order": 5,
+        "width": 12,
+        "height": 6,
+        "label": "Sıcaklık (ds18b20, dht11)",
+        "chartType": "line",
+        "legend": "true",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "Veri bekleniyor",
+        "removeOlder": 1,
+        "removeOlderUnit": "3600",
+        "outputs": 1,
+        "x": 980,
+        "y": 640,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "chart_nem_hava",
+        "type": "ui_chart",
+        "z": "hub_tab_telemetry",
+        "name": "Nem Hava",
+        "group": "group_hava",
+        "order": 6,
+        "width": 12,
+        "height": 6,
+        "label": "Nem (dht11_nem)",
+        "chartType": "line",
+        "legend": "true",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "Veri bekleniyor",
+        "removeOlder": 1,
+        "removeOlderUnit": "3600",
+        "outputs": 1,
+        "x": 980,
+        "y": 720,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "func_influx_prep",
+        "type": "function",
+        "z": "hub_tab_telemetry",
+        "name": "Influx Hazırla",
+        "func": "// InfluxDB out için msg.payload hazırlar.\n// measurement: telemetry (influxdb out düğümünde de ayarlı)\n// tags: problem_id, takim_no, sensor\n// fields: sicaklik, nem, hava_kalitesi (payload'da olanlar)\n\nconst p = msg.payload;\nif (!p || typeof p !== \"object\") {\n    return null;\n}\n\nconst topicParts = String(msg.topic || \"\").split(\"/\");\nconst problem_id = topicParts[0] || p.problem_id || \"unknown\";\nconst takim_no = topicParts[1] || p.takim_no || \"unknown\";\nconst sensor = String(p.sensor || p.cihaz_id || p.device_id || \"unknown\").toLowerCase();\n\nlet sicaklik = p.sicaklik;\nlet nem = p.nem;\nlet hava_kalitesi = p.hava_kalitesi;\n\nif (p.values && typeof p.values === \"object\") {\n    if (sicaklik === undefined) sicaklik = p.values.sicaklik;\n    if (nem === undefined) nem = p.values.nem;\n    if (hava_kalitesi === undefined) hava_kalitesi = p.values.hava_kalitesi;\n}\n\nconst fields = {};\n\nif (sicaklik !== undefined && sicaklik !== null && !Number.isNaN(Number(sicaklik))) {\n    fields.sicaklik = Number(sicaklik);\n}\nif (nem !== undefined && nem !== null && !Number.isNaN(Number(nem))) {\n    fields.nem = Number(nem);\n}\nif (hava_kalitesi !== undefined && hava_kalitesi !== null && !Number.isNaN(Number(hava_kalitesi))) {\n    fields.hava_kalitesi = Number(hava_kalitesi);\n}\n\nif (Object.keys(fields).length === 0) {\n    return null;\n}\n\nmsg.measurement = \"telemetry\";\nmsg.payload = [\n    fields,\n    { problem_id, takim_no, sensor }\n];\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 420,
+        "wires": [
+            [
+                "influx_out1",
+                "debug_influx"
+            ]
+        ]
+    },
+    {
+        "id": "debug_influx",
+        "type": "debug",
+        "z": "hub_tab_telemetry",
+        "name": "Influx Debug",
+        "active": false,
+        "tosidebar": true,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 760,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "influx_out1",
+        "type": "influxdb out",
+        "z": "hub_tab_telemetry",
+        "influxdb": "influx_cfg1",
+        "name": "InfluxDB telemetry",
+        "measurement": "telemetry",
+        "precision": "",
+        "retentionPolicy": "",
+        "database": "",
+        "precisionV18FluxV20": "ms",
+        "retentionPolicyV18Flux": "",
+        "org": "iot-hub",
+        "bucket": "iot_telemetry",
+        "x": 760,
+        "y": 420,
+        "wires": []
+    },
+    {
+        "id": "func_threshold",
+        "type": "function",
+        "z": "hub_tab_telemetry",
+        "name": "Eşik → YZ Tetik",
+        "func": "const p = msg.payload;\nif (!p || typeof p !== \"object\") {\n    return null;\n}\n\nconst topicParts = String(msg.topic || \"\").split(\"/\");\nconst problem_id = topicParts[0] || p.problem_id;\nconst takim_no = topicParts[1] || p.takim_no;\n\nif (!problem_id || !takim_no) {\n    return null;\n}\n\nlet nem = p.nem;\nlet hava_kalitesi = p.hava_kalitesi;\n\nif (p.values && typeof p.values === \"object\") {\n    if (nem === undefined) nem = p.values.nem;\n    if (hava_kalitesi === undefined) hava_kalitesi = p.values.hava_kalitesi;\n}\n\nlet trigger = false;\nlet trigger_reason = \"\";\n\nif (nem !== undefined && nem !== null && Number(nem) > 70) {\n    trigger = true;\n    trigger_reason = `nem>${70} (${Number(nem)})`;\n}\n\nif (hava_kalitesi !== undefined && hava_kalitesi !== null && Number(hava_kalitesi) > 400) {\n    trigger = true;\n    trigger_reason = trigger_reason\n        ? `${trigger_reason}; hava_kalitesi>400 (${Number(hava_kalitesi)})`\n        : `hava_kalitesi>400 (${Number(hava_kalitesi)})`;\n}\n\nif (!trigger) {\n    return null;\n}\n\nmsg.payload = {\n    problem_id,\n    takim_no,\n    minutes: 15,\n    trigger_reason\n};\nmsg.problem_id = problem_id;\nmsg.takim_no = takim_no;\nmsg.url = \"http://127.0.0.1:5000/analyze\";\nmsg.method = \"POST\";\nmsg.headers = { \"content-type\": \"application/json\" };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 520,
+        "wires": [
+            [
+                "http_analyze"
+            ]
+        ]
+    },
+    {
+        "id": "inject_analyze_60s",
+        "type": "inject",
+        "z": "hub_tab_yz",
+        "name": "Her 60 sn",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "60",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 150,
+        "y": 120,
+        "wires": [
+            [
+                "func_analyze_trigger"
+            ]
+        ]
+    },
+    {
+        "id": "func_analyze_trigger",
+        "type": "function",
+        "z": "hub_tab_yz",
+        "name": "YZ İstek Oluştur",
+        "func": "// Periyodik YZ analiz tetikleyici — 2 çıkış:\n// 1 → tarim_sulama / takim 7\n// 2 → tarim_havalandirma / takim 8\n\nconst targets = [\n    { problem_id: \"tarim_sulama\", takim_no: \"7\" },\n    { problem_id: \"tarim_havalandirma\", takim_no: \"8\" }\n];\n\nfunction buildRequest(problem_id, takim_no) {\n    return {\n        payload: {\n            problem_id,\n            takim_no,\n            minutes: 15\n        },\n        problem_id,\n        takim_no,\n        url: \"http://127.0.0.1:5000/analyze\",\n        method: \"POST\",\n        headers: {\n            \"content-type\": \"application/json\"\n        }\n    };\n}\n\nreturn targets.map((t) => buildRequest(t.problem_id, t.takim_no));\n",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 120,
+        "wires": [
+            [
+                "http_analyze"
+            ],
+            [
+                "http_analyze"
+            ]
+        ]
+    },
+    {
+        "id": "http_analyze",
+        "type": "http request",
+        "z": "hub_tab_yz",
+        "name": "POST /analyze",
+        "method": "use",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 580,
+        "y": 200,
+        "wires": [
+            [
+                "func_command_from_api",
+                "debug_analyze"
+            ]
+        ]
+    },
+    {
+        "id": "debug_analyze",
+        "type": "debug",
+        "z": "hub_tab_yz",
+        "name": "Analyze Yanıt",
+        "active": true,
+        "tosidebar": true,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 780,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "func_command_from_api",
+        "type": "function",
+        "z": "hub_tab_yz",
+        "name": "Command Oluştur",
+        "func": "// FastAPI /analyze yanıtını MQTT command mesajına dönüştürür.\n// topic: {problem_id}/{takim_no}/command\n\nconst res = msg.payload;\nif (!res || typeof res !== \"object\") {\n    return null;\n}\n\nconst problem_id = res.problem_id || msg.problem_id;\nconst takim_no = res.takim_no || msg.takim_no;\nconst aksiyon = res.aksiyon;\n\nif (!problem_id || !takim_no) {\n    node.warn(\"command: problem_id veya takim_no eksik\");\n    return null;\n}\n\nif (!aksiyon || aksiyon === \"bekle\") {\n    return null;\n}\n\nmsg.topic = `${problem_id}/${takim_no}/command`;\nmsg.payload = {\n    aksiyon,\n    sure_sn: Number(res.sure_sn) || 0,\n    gerekce: res.gerekce || \"\",\n    source: res.source || \"api\",\n    timestamp: new Date().toISOString()\n};\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 780,
+        "y": 200,
+        "wires": [
+            [
+                "mqtt_command_out",
+                "debug_command_build"
+            ]
+        ]
+    },
+    {
+        "id": "debug_command_build",
+        "type": "debug",
+        "z": "hub_tab_yz",
+        "name": "Command Debug",
+        "active": true,
+        "tosidebar": true,
+        "complete": "true",
+        "targetType": "full",
+        "x": 1000,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "mqtt_command_out",
+        "type": "mqtt out",
+        "z": "hub_tab_yz",
+        "name": "MQTT Command",
+        "topic": "",
+        "qos": "1",
+        "retain": "false",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "broker1",
+        "x": 1000,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "mqtt_command_in",
+        "type": "mqtt in",
+        "z": "hub_tab_command",
+        "name": "Tüm Command",
+        "topic": "+/+/command",
+        "qos": "1",
+        "broker": "broker1",
+        "inputs": 0,
+        "x": 150,
+        "y": 120,
+        "wires": [
+            [
+                "json_command",
+                "debug_command_in"
+            ]
+        ]
+    },
+    {
+        "id": "json_command",
+        "type": "json",
+        "z": "hub_tab_command",
+        "name": "JSON Parse",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 360,
+        "y": 120,
+        "wires": [
+            [
+                "debug_command_parsed"
+            ]
+        ]
+    },
+    {
+        "id": "debug_command_in",
+        "type": "debug",
+        "z": "hub_tab_command",
+        "name": "Command Raw",
+        "active": true,
+        "tosidebar": true,
+        "complete": "true",
+        "targetType": "full",
+        "x": 360,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "debug_command_parsed",
+        "type": "debug",
+        "z": "hub_tab_command",
+        "name": "Command Parsed",
+        "active": true,
+        "tosidebar": true,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 560,
+        "y": 120,
+        "wires": []
+    }
+]
